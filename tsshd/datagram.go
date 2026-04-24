@@ -502,6 +502,13 @@ func forwardUDP(pconn *packetConn, conn io.ReadWriteCloser, msg *dialUdpMessage)
 		for {
 			n, err := conn.Read(buffer)
 			if err != nil {
+				select {
+				case <-done1:
+					// The client actively closed the connection. Return silently to reduce log noise.
+					// The client can handle its own logging for connection closures if needed.
+					return
+				default:
+				}
 				if isClosedError(err) {
 					debug("udp forwarding read from [%s] [%s] closed: %v", msg.Net, msg.Addr, err)
 					return
