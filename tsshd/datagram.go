@@ -476,11 +476,11 @@ func forwardUDP(pconn *packetConn, conn io.ReadWriteCloser, msg *dialUdpMessage)
 		_ = pconn.Close()
 	}()
 
-	done1 := make(chan struct{})
-	done2 := make(chan struct{})
+	clientDone := make(chan struct{})
+	serverDone := make(chan struct{})
 
 	go func() {
-		defer close(done1)
+		defer close(clientDone)
 		var warnOnce sync.Once
 		_ = pconn.Consume(func(buf []byte) error {
 			if _, err := conn.Write(buf); err != nil {
@@ -497,21 +497,21 @@ func forwardUDP(pconn *packetConn, conn io.ReadWriteCloser, msg *dialUdpMessage)
 	}()
 
 	go func() {
-		defer close(done2)
+		defer close(serverDone)
 		buffer := make([]byte, 0xffff)
 		for {
 			n, err := conn.Read(buffer)
 			if err != nil {
-				select {
-				case <-done1:
-					// The client actively closed the connection. Return silently to reduce log noise.
-					// The client can handle its own logging for connection closures if needed.
-					return
-				default:
-				}
 				if isClosedError(err) {
-					debug("udp forwarding read from [%s] [%s] closed: %v", msg.Net, msg.Addr, err)
-					return
+					select {
+					case <-clientDone:
+						// The client actively closed the connection. Return silently to reduce log noise.
+						// The client can handle its own logging for connection closures if needed.
+						return
+					default:
+						debug("udp forwarding read from [%s] [%s] closed: %v", msg.Net, msg.Addr, err)
+						return
+					}
 				}
 				warning("udp forwarding read from [%s] [%s] failed: %v", msg.Net, msg.Addr, err)
 				return
@@ -528,8 +528,8 @@ func forwardUDP(pconn *packetConn, conn io.ReadWriteCloser, msg *dialUdpMessage)
 	}()
 
 	select {
-	case <-done1:
-	case <-done2:
+	case <-clientDone:
+	case <-serverDone:
 	}
 }
 
