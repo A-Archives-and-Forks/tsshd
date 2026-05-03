@@ -2,6 +2,8 @@
 
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg?style=flat)](https://choosealicense.com/licenses/mit/)
 [![GitHub Release](https://img.shields.io/github/v/release/trzsz/tsshd)](https://github.com/trzsz/tsshd/releases)
+[![WebSite](https://img.shields.io/badge/WebSite-https%3A%2F%2Ftrzsz.github.io%2Ftsshd-blue?style=flat)](https://trzsz.github.io/tsshd)
+[![中文文档](https://img.shields.io/badge/%E4%B8%AD%E6%96%87%E6%96%87%E6%A1%A3-https%3A%2F%2Ftrzsz.github.io%2Fcn%2Ftsshd-blue?style=flat)](https://trzsz.github.io/cn/tsshd)
 
 **tsshd** 是一个基于 UDP 的 SSH 服务器，专为不稳定网络环境设计，支持在网络切换或 IP 变化时无缝漫游，并能在高延迟链路（如蜂窝网络和不稳定的 Wi-Fi）上稳定工作。
 
@@ -86,7 +88,18 @@ tssh 和 tsshd 的工作方式与 ssh 完全相同，没有计划支持本地回
 
   </details>
 
-- Linux 可用 yum 安装
+- Fedora / CentOS / RHEL 可用 dnf 安装
+
+  <details><summary><code>sudo dnf install tsshd</code></summary>
+
+  ```sh
+  sudo dnf copr enable @trzsz/tsshd
+  sudo dnf install tsshd
+  ```
+
+  </details>
+
+- 传统版本 CentOS / RHEL 可用 yum 安装
 
   <details><summary><code>sudo yum install tsshd</code></summary>
 
@@ -395,15 +408,15 @@ func handleBusiness(sess Session) {
 
 ### D. 示例代码 (Examples)
 
-为了帮助您快速上手，我们在 [`examples/`](./examples) 目录下提供了完整可运行的示例代码。您可以将这些示例作为构建自定义 SSH 服务的模板。
+为了帮助您快速上手，我们在 [`examples/`](https://github.com/trzsz/tsshd/tree/main/examples) 目录下提供了完整可运行的示例代码。您可以将这些示例作为构建自定义 SSH 服务的模板。
 
-- **[examples/hello](./examples/hello/main.go)**
+- **[examples/hello](https://github.com/trzsz/tsshd/tree/main/examples/hello)**
   最基础的实现。它演示了如何使用 `tsshd.WithMiddleware` 拦截 SSH 会话，打印欢迎信息，并使用 `term` 包读取用户输入。非常适合用于构建交互式 CLI 工具。
 
-- **[examples/sshd](./examples/sshd/main.go)**
+- **[examples/sshd](https://github.com/trzsz/tsshd/tree/main/examples/sshd)**
   一个更全面的示例，展示了如何处理实际的命令执行。它演示了如何正确路由 PTY（交互式）和 Direct（批处理）执行流，处理终端窗口大小调整，以及将标准 I/O 直接流式传输到本地子进程。
 
-- **[examples/wish](./examples/wish/main.go)**
+- **[examples/wish](https://github.com/trzsz/tsshd/tree/main/examples/wish)**
   上述**混合架构**的完整展示。它实现了适配器模式以统一 `Session` 接口，允许相同的业务逻辑在传统的 TCP SSH 服务器（Wish）和低延迟的 UDP `tsshd` 服务器之间无缝运行，并包含完整的进程切换（Handoff）机制。
 
 > **提示**：您可以在本地运行这些示例，并使用 `tssh` 客户端进行测试，以亲身体验低延迟和漫游功能！

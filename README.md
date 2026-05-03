@@ -2,7 +2,8 @@
 
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg?style=flat)](https://choosealicense.com/licenses/mit/)
 [![GitHub Release](https://img.shields.io/github/v/release/trzsz/tsshd)](https://github.com/trzsz/tsshd/releases)
-[![中文文档](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-%E6%96%87%E6%A1%A3-blue?style=flat)](https://github.com/trzsz/tsshd/blob/main/README.cn.md)
+[![WebSite](https://img.shields.io/badge/WebSite-https%3A%2F%2Ftrzsz.github.io%2Ftsshd-blue?style=flat)](https://trzsz.github.io/tsshd)
+[![中文文档](https://img.shields.io/badge/%E4%B8%AD%E6%96%87%E6%96%87%E6%A1%A3-https%3A%2F%2Ftrzsz.github.io%2Fcn%2Ftsshd-blue?style=flat)](https://trzsz.github.io/cn/tsshd)
 
 **tsshd** is a UDP-based SSH server built for unreliable networks. It supports seamless roaming across networks and IP changes, and works well on high-latency links such as cellular connections and unstable Wi-Fi.
 
@@ -87,7 +88,18 @@ tssh and tsshd works exactly like ssh, there are no plans to support local echo 
 
   </details>
 
-- Install with yum on Linux
+- Install with dnf on Fedora / CentOS / RHEL
+
+  <details><summary><code>sudo dnf install tsshd</code></summary>
+
+  ```sh
+  sudo dnf copr enable @trzsz/tsshd
+  sudo dnf install tsshd
+  ```
+
+  </details>
+
+- Install with yum on Legacy CentOS / RHEL
 
   <details><summary><code>sudo yum install tsshd</code></summary>
 
@@ -396,15 +408,15 @@ When Wish receives a request from the client to start `tsshd`, you can use `exec
 
 #### D. Examples
 
-To help you get started quickly, we provide fully working sample code in the [`examples/`](./examples) directory. You can use these as templates for your own custom SSH services.
+To help you get started quickly, we provide fully working sample code in the [`examples/`](https://github.com/trzsz/tsshd/tree/main/examples) directory. You can use these as templates for your own custom SSH services.
 
-- **[examples/hello](./examples/hello/main.go)**
+- **[examples/hello](https://github.com/trzsz/tsshd/tree/main/examples/hello)**
   The most basic implementation. It demonstrates how to use `tsshd.WithMiddleware` to intercept an SSH session, print a greeting, and read user input using the `term` package. Perfect for building interactive CLI tools.
 
-- **[examples/sshd](./examples/sshd/main.go)**
+- **[examples/sshd](https://github.com/trzsz/tsshd/tree/main/examples/sshd)**
   A more comprehensive example showing how to handle actual command execution. It demonstrates how to properly route PTY (interactive) and Direct (batch) execution flows, handle terminal window resizing, and stream standard I/O directly to local sub-processes.
 
-- **[examples/wish](./examples/wish/main.go)**
+- **[examples/wish](https://github.com/trzsz/tsshd/tree/main/examples/wish)**
   A complete showcase of the **Hybrid Architecture** mentioned above. It implements the adapter pattern to unify the `Session` interface, allowing the same business logic to run seamlessly across a traditional TCP SSH server (Wish) and the low-latency UDP `tsshd` server, complete with the process handoff mechanism.
 
 > **Tip**: You can run these examples locally and test them using the `tssh` client to experience the low-latency and roaming features firsthand!
