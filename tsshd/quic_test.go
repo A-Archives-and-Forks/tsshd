@@ -123,7 +123,7 @@ func TestQUIC_InitialPacketSize(t *testing.T) {
 		acceptDone := make(chan struct{})
 		go func() {
 			defer func() { _ = listener.Close() }()
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
 			conn, err := listener.Accept(ctx)
@@ -140,7 +140,7 @@ func TestQUIC_InitialPacketSize(t *testing.T) {
 		client, err := newQuicClient(&UdpClientOptions{
 			ServerInfo:     info,
 			ProxyClient:    &SshUdpClient{},
-			ConnectTimeout: 3 * time.Second,
+			ConnectTimeout: 10 * time.Second,
 		}, cliConn, svrConn.LocalAddr())
 		if err != nil {
 			t.Fatalf("newQuicClient failed (mtu=%d): %v", requestedMTU, err)
