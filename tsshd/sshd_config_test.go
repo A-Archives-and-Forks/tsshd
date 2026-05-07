@@ -300,4 +300,10 @@ func TestEvalMatchLine(t *testing.T) {
 	assert.False(evalMatchLine("Group=wheel User=john", "john", []string{"admin", "docker"}))
 	assert.False(evalMatchLine("Group=admin User=bob", "john", []string{"admin", "docker"}))
 	assert.False(evalMatchLine("Group \t admin User  bob", "john", []string{"admin", "docker"}))
+
+	// Unsupported criteria must not match; otherwise a Match block for a
+	// different Address/Host/etc. could accidentally override restrictions.
+	assert.False(evalMatchLine("Address 192.0.2.*", "john", []string{"admin"}))
+	assert.False(evalMatchLine("User john Address 192.0.2.*", "john", []string{"admin"}))
+	assert.True(evalMatchLine("All", "john", []string{"admin"}))
 }
