@@ -95,12 +95,9 @@ func listenRandomUDP(t *testing.T) *udpPacketConn {
 	return &udpPacketConn{conn}
 }
 
-// TestQUIC_InitialPacketSize verifies that listenQUIC clamps
-// quicConfig.InitialPacketSize to the valid MTU range.
-//
-// NOTE: newQuicDatagramConn relies on quicConfig.InitialPacketSize being
-// adjusted by quic during listener initialization. If quic does not perform
-// this adjustment, newQuicDatagramConn must be updated accordingly.
+// TestQUIC_InitialPacketSize verifies that QUIC packet size selection clamps
+// the requested MTU to the valid MTU range without mutating the shared base
+// quicConfig.
 func TestQUIC_InitialPacketSize(t *testing.T) {
 	verifyInitialPacketSize := func(requestedMTU, expectedMTU uint16) {
 		info := &ServerInfo{MTU: requestedMTU}
@@ -111,13 +108,16 @@ func TestQUIC_InitialPacketSize(t *testing.T) {
 
 		// Server
 		quicConfig.InitialPacketSize = 0
-		listener, err := listenQUIC(svrConn, info, requestedMTU)
+		listener, serverInitialPacketSize, err := listenQUIC(svrConn, info, requestedMTU)
 		if err != nil {
 			t.Fatalf("listenQUIC failed (mtu=%d): %v", requestedMTU, err)
 		}
 
-		if got := quicConfig.InitialPacketSize; got != expectedMTU {
-			t.Fatalf("InitialPacketSize mismatch: requested=%d, expected=%d, got=%d", requestedMTU, expectedMTU, got)
+		if serverInitialPacketSize != expectedMTU {
+			t.Fatalf("server initial packet size mismatch: requested=%d, expected=%d, got=%d", requestedMTU, expectedMTU, serverInitialPacketSize)
+		}
+		if got := quicConfig.InitialPacketSize; got != 0 {
+			t.Fatalf("shared quicConfig should not be mutated by listenQUIC, got InitialPacketSize=%d", got)
 		}
 
 		acceptDone := make(chan struct{})
@@ -145,12 +145,14 @@ func TestQUIC_InitialPacketSize(t *testing.T) {
 		if err != nil {
 			t.Fatalf("newQuicClient failed (mtu=%d): %v", requestedMTU, err)
 		}
+		if got := client.forwarder.conn.GetMaxDatagramSize() + kQuicShortHeaderSize + kUdpForwardChannelIdSize; got != expectedMTU {
+			t.Fatalf("client initial packet size mismatch: requested=%d, expected=%d, got=%d", requestedMTU, expectedMTU, got)
+		}
+		<-acceptDone
 		_ = client.closeClient()
 
-		<-acceptDone
-
-		if got := quicConfig.InitialPacketSize; got != expectedMTU {
-			t.Fatalf("InitialPacketSize mismatch: requested=%d, expected=%d, got=%d", requestedMTU, expectedMTU, got)
+		if got := quicConfig.InitialPacketSize; got != 0 {
+			t.Fatalf("shared quicConfig should not be mutated, got InitialPacketSize=%d", got)
 		}
 	}
 
@@ -219,7 +221,7 @@ func TestQUIC_RespectMTU(t *testing.T) {
 	svrConn := &mtuTestConn{udpPacketConn: listenRandomUDP(t), t: t, mtu: mtu}
 	defer func() { _ = svrConn.Close() }()
 
-	listener, err := listenQUIC(svrConn, info, mtu)
+	listener, _, err := listenQUIC(svrConn, info, mtu)
 	if err != nil {
 		t.Fatalf("listenQUIC failed: %v", err)
 	}
@@ -418,7 +420,7 @@ func TestQUIC_CertValidation(t *testing.T) {
 	defer func() { _ = svrConn.Close() }()
 
 	// Start QUIC server
-	listener, err := listenQUIC(svrConn, &info, 0)
+	listener, _, err := listenQUIC(svrConn, &info, 0)
 	if err != nil {
 		t.Fatalf("listenQUIC failed: %v", err)
 	}
