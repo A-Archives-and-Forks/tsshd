@@ -302,16 +302,39 @@ func evalMatchConditions(conds map[string][]string, user string, groups []string
 	}
 
 	if pats, ok := conds["group"]; ok {
-		groupOK := false
-		for _, g := range groups {
-			if matchList(g, pats) {
-				groupOK = true
-				break
-			}
-		}
-		if !groupOK {
+		if !matchGroupList(groups, pats) {
 			return false
 		}
+	}
+
+	return true
+}
+
+func matchGroupList(groups []string, patterns []string) bool {
+	hasPositive := false
+	positiveMatch := false
+
+	for _, p := range patterns {
+		pat := p
+		neg := strings.HasPrefix(p, "!")
+		if neg {
+			pat = strings.TrimSpace(p[1:])
+		} else {
+			hasPositive = true
+		}
+
+		for _, g := range groups {
+			if wildcardMatch(pat, g) {
+				if neg {
+					return false
+				}
+				positiveMatch = true
+			}
+		}
+	}
+
+	if hasPositive {
+		return positiveMatch
 	}
 
 	return true
