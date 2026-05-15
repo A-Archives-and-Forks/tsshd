@@ -78,7 +78,7 @@ type tsshdArgs struct {
 
 func printHelp() int {
 	fmt.Printf("usage: tsshd [-h|-v|-V] [--kcp] [--tcp] [--ipv4] [--ipv6] [--debug] [--attachable] [--mtu N] [--port low-high] [--connect-timeout t]\n\n" +
-		"tsshd: UDP-based SSH server with roaming support.\n\n" +
+		"tsshd: A UDP-based SSH server with seamless roaming and auto-reconnect.\n\n" +
 		"optional arguments:\n" +
 		"  -h, --help             show this help message and exit\n" +
 		"  -v                     show short version number and exit\n" +
