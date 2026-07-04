@@ -25,6 +25,7 @@ SOFTWARE.
 package tsshd
 
 import (
+	"bufio"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -34,13 +35,14 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os/exec"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
 type tcpServerConn struct {
-	conn net.Conn
+	conn io.ReadWriteCloser
 }
 
 func (t *tcpServerConn) Close() error {
@@ -66,6 +68,36 @@ func (t *tcpServerConn) Consume(consumeFn func([]byte) error) error {
 			return err
 		}
 	}
+}
+
+type proxyCmdConn struct {
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout io.ReadCloser
+	closed atomic.Bool
+}
+
+func (c *proxyCmdConn) Close() error {
+	if !c.closed.CompareAndSwap(false, true) {
+		return nil
+	}
+
+	_ = c.stdin.Close()
+	_ = c.stdout.Close()
+
+	if c.cmd.Process != nil {
+		_ = c.cmd.Process.Kill()
+	}
+
+	return nil
+}
+
+func (c *proxyCmdConn) Write(buf []byte) (int, error) {
+	return c.stdin.Write(buf)
+}
+
+func (c *proxyCmdConn) Read(buf []byte) (int, error) {
+	return c.stdout.Read(buf)
 }
 
 type udpServerConn struct {
@@ -121,6 +153,7 @@ type clientProxy struct {
 	serverChecker *timeoutChecker
 	closed        atomic.Bool
 	udpTraffic    *trafficStats
+	proxyCmds     []string
 }
 
 func (p *clientProxy) clearBackendConn(oldConn *serverConnHolder) {
@@ -138,6 +171,7 @@ func (p *clientProxy) clearBackendConn(oldConn *serverConnHolder) {
 }
 
 func (p *clientProxy) renewTransportPath(proxyClient *SshUdpClient, connectTimeout time.Duration) error {
+
 	p.renewMutex.Lock()
 	defer p.renewMutex.Unlock()
 	p.serialNumber++
@@ -146,6 +180,10 @@ func (p *clientProxy) renewTransportPath(proxyClient *SshUdpClient, connectTimeo
 
 	var err error
 	var conn *serverConnHolder
+
+	if proxyClient == nil && len(p.proxyCmds) > 0 && p.proxyMode != kProxyModeTCP {
+		return fmt.Errorf("proxy command only supports tcp proxy mode")
+	}
 	if p.proxyMode == kProxyModeTCP {
 		conn, err = p.renewTcpPath(proxyClient, connectTimeout)
 	} else {
@@ -198,34 +236,79 @@ func (p *clientProxy) renewTransportPath(proxyClient *SshUdpClient, connectTimeo
 	return nil
 }
 
-func (p *clientProxy) renewTcpPath(proxyClient *SshUdpClient, connectTimeout time.Duration) (*serverConnHolder, error) {
-	var conn *serverConnHolder
-	var setReadDeadline func(t time.Time) error
+func (p *clientProxy) dialStream(proxyClient *SshUdpClient, connectTimeout time.Duration) (*serverConnHolder, error) {
 	if proxyClient != nil {
 		tcpConn, err := proxyClient.DialTimeout(p.serverNet, p.serverAddr, connectTimeout)
 		if err != nil {
 			return nil, fmt.Errorf("proxy dial [%s] [%s] failed: %v", p.serverNet, p.serverAddr, err)
 		}
-		setReadDeadline = tcpConn.SetReadDeadline
-		conn = &serverConnHolder{&tcpServerConn{tcpConn}}
-	} else {
-		serverAddr, err := doWithTimeout(func() (*net.TCPAddr, error) {
-			return net.ResolveTCPAddr(p.serverNet, p.serverAddr)
-		}, connectTimeout)
+		return &serverConnHolder{&tcpServerConn{tcpConn}}, nil
+	}
+
+	if len(p.proxyCmds) > 0 {
+		cmd := exec.Command(p.proxyCmds[0], p.proxyCmds[1:]...)
+
+		stdin, err := cmd.StdinPipe()
 		if err != nil {
-			return nil, fmt.Errorf("resolve tcp addr [%s] [%s] failed: %v", p.serverNet, p.serverAddr, err)
+			return nil, fmt.Errorf("proxy command [%s] stdin pipe failed: %v", cmd.String(), err)
 		}
-		tcpConn, err := doWithTimeout(func() (*net.TCPConn, error) {
-			return net.DialTCP(p.serverNet, nil, serverAddr)
-		}, connectTimeout)
+		stdout, err := cmd.StdoutPipe()
 		if err != nil {
-			return nil, fmt.Errorf("dial [%s] [%s] failed: %v", p.serverNet, p.serverAddr, err)
+			return nil, fmt.Errorf("proxy command [%s] stdout pipe failed: %v", cmd.String(), err)
 		}
-		setDSCP(tcpConn, kProxyDSCP)
-		_ = tcpConn.SetReadBuffer(kProxyBufferSize)
-		_ = tcpConn.SetWriteBuffer(kProxyBufferSize)
-		setReadDeadline = tcpConn.SetReadDeadline
-		conn = &serverConnHolder{&tcpServerConn{tcpConn}}
+
+		if p.client.enableDebugging {
+			stderr, err := cmd.StderrPipe()
+			if err != nil {
+				return nil, fmt.Errorf("proxy command [%s] stderr pipe failed: %v", cmd.String(), err)
+			}
+			go func() {
+				scanner := bufio.NewScanner(stderr)
+				for scanner.Scan() {
+					p.client.debug("proxy command stderr: %s", scanner.Text())
+				}
+			}()
+		} else {
+			cmd.Stderr = io.Discard
+		}
+
+		if err := cmd.Start(); err != nil {
+			return nil, fmt.Errorf("proxy command [%s] start failed: %v", cmd.String(), err)
+		}
+
+		conn := &proxyCmdConn{cmd: cmd, stdin: stdin, stdout: stdout}
+
+		go func() {
+			if err := cmd.Wait(); err != nil && !conn.closed.Load() && p.client.enableDebugging {
+				p.client.debug("proxy command [%s] exited: %v", cmd.String(), err)
+			}
+		}()
+
+		return &serverConnHolder{&tcpServerConn{conn}}, nil
+	}
+
+	serverAddr, err := doWithTimeout(func() (*net.TCPAddr, error) {
+		return net.ResolveTCPAddr(p.serverNet, p.serverAddr)
+	}, connectTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("resolve tcp addr [%s] [%s] failed: %v", p.serverNet, p.serverAddr, err)
+	}
+	tcpConn, err := doWithTimeout(func() (*net.TCPConn, error) {
+		return net.DialTCP(p.serverNet, nil, serverAddr)
+	}, connectTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("dial [%s] [%s] failed: %v", p.serverNet, p.serverAddr, err)
+	}
+	setDSCP(tcpConn, kProxyDSCP)
+	_ = tcpConn.SetReadBuffer(kProxyBufferSize)
+	_ = tcpConn.SetWriteBuffer(kProxyBufferSize)
+	return &serverConnHolder{&tcpServerConn{tcpConn}}, nil
+}
+
+func (p *clientProxy) renewTcpPath(proxyClient *SshUdpClient, connectTimeout time.Duration) (*serverConnHolder, error) {
+	conn, err := p.dialStream(proxyClient, connectTimeout)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := p.sendAuthPacket(conn); err != nil {
@@ -233,13 +316,8 @@ func (p *clientProxy) renewTcpPath(proxyClient *SshUdpClient, connectTimeout tim
 		return nil, err
 	}
 
-	if err := setReadDeadline(time.Now().Add(connectTimeout)); err != nil {
-		_ = conn.Close()
-		return nil, fmt.Errorf("set read deadline failed: %v", err)
-	}
-
 	buffer := make([]byte, 256)
-	n, err := conn.Read(buffer)
+	n, err := doWithTimeout(func() (int, error) { return conn.Read(buffer) }, connectTimeout)
 	if err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("recv auth packet failed: %v", err)
@@ -250,8 +328,6 @@ func (p *clientProxy) renewTcpPath(proxyClient *SshUdpClient, connectTimeout tim
 		return nil, fmt.Errorf("proxy auth failed")
 	}
 	p.client.debug("serial number [%d] auth success", p.serialNumber)
-
-	_ = setReadDeadline(time.Time{})
 
 	return conn, nil
 }
@@ -512,6 +588,14 @@ func startClientProxy(client *SshUdpClient, opts *UdpClientOptions) (*clientProx
 		clientID = binary.BigEndian.Uint64(buf)
 	}
 
+	var proxyCmds []string
+	if opts.ProxyCommand != "" {
+		proxyCmds, err = splitCommandLine(opts.ProxyCommand)
+		if err != nil {
+			return nil, fmt.Errorf("split proxy command [%s] failed: %v", opts.ProxyCommand, err)
+		}
+	}
+
 	proxy := &clientProxy{
 		client:        client,
 		proxyMode:     opts.ServerInfo.ProxyMode,
@@ -522,6 +606,7 @@ func startClientProxy(client *SshUdpClient, opts *UdpClientOptions) (*clientProx
 		clientID:      clientID,
 		serverID:      opts.ServerInfo.ServerID,
 		serverChecker: newTimeoutChecker(opts.HeartbeatTimeout),
+		proxyCmds:     proxyCmds,
 	}
 	proxy.backendCond = sync.NewCond(&proxy.backendMutex)
 

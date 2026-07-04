@@ -113,6 +113,7 @@ type UdpClientOptions struct {
 	RttCallback      func(rtt int64)
 	QuitCallback     func(reason string)
 	DiscardCallback  func(discardedInput []byte, discardedOutputLines, discardedOutputBytes uint64)
+	ProxyCommand     string
 }
 
 // NewSshUdpClient creates a SshUdpClient
