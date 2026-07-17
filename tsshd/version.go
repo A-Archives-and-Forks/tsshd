@@ -33,7 +33,7 @@ import (
 	"strings"
 )
 
-const kTsshdVersion = "0.1.8"
+const kTsshdVersion = "0.1.9"
 
 const kTsshdProtocol = 1
 
