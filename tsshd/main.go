@@ -289,7 +289,7 @@ func RunMain(opts ...Option) (int, error) {
 	initSshdConfig()
 
 	if !enableDebugLogging {
-		if v := strings.ToLower(getSshdConfig("LogLevel")); v == "quiet" || v == "fatal" {
+		if v := getSshdConfig("LogLevel"); strings.EqualFold(v, "quiet") || strings.EqualFold(v, "fatal") {
 			enableWarningLogging = false
 		}
 	}

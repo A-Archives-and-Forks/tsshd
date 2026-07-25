@@ -956,11 +956,11 @@ func (c *sessionContext) handleX11Request(msg *startMessage) {
 		return
 	}
 
-	if v := strings.ToLower(getSshdConfig("X11Forwarding")); v != "yes" {
+	if !strings.EqualFold(getSshdConfig("X11Forwarding"), "yes") {
 		warning("X11Forwarding is not permitted on the server. Check [X11Forwarding] in [%s] on the server.", sshdConfigPath)
 		return
 	}
-	if v := strings.ToLower(getSshdConfig("DisableForwarding")); v == "yes" {
+	if strings.EqualFold(getSshdConfig("DisableForwarding"), "yes") {
 		warning("X11Forwarding is not permitted on the server. Check [DisableForwarding] in [%s] on the server.", sshdConfigPath)
 		return
 	}
@@ -972,7 +972,7 @@ func (c *sessionContext) handleX11Request(msg *startMessage) {
 		}
 	}
 
-	useLocalhost := strings.ToLower(getSshdConfig("X11UseLocalhost")) != "no"
+	useLocalhost := !strings.EqualFold(getSshdConfig("X11UseLocalhost"), "no")
 	listeners, port, err := listenTcpOnFreePort(useLocalhost, 6000+displayOffset, min(6000+displayOffset+1000, 65535))
 	if err != nil {
 		warning("X11 forwarding listen failed: %v", err)
@@ -1135,11 +1135,11 @@ func (c *sessionContext) handleAgentRequest(msg *startMessage) {
 		return
 	}
 
-	if v := strings.ToLower(getSshdConfig("AllowAgentForwarding")); v == "no" {
+	if strings.EqualFold(getSshdConfig("AllowAgentForwarding"), "no") {
 		warning("AgentForwarding is not permitted on the server. Check [AllowAgentForwarding] in [%s] on the server.", sshdConfigPath)
 		return
 	}
-	if v := strings.ToLower(getSshdConfig("DisableForwarding")); v == "yes" {
+	if strings.EqualFold(getSshdConfig("DisableForwarding"), "yes") {
 		warning("AgentForwarding is not permitted on the server. Check [DisableForwarding] in [%s] on the server.", sshdConfigPath)
 		return
 	}
