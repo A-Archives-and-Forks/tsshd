@@ -37,8 +37,8 @@ import (
 	"strings"
 	"sync"
 
+	"charm.land/ssh"
 	"charm.land/wish/v2"
-	"github.com/charmbracelet/ssh"
 	"github.com/trzsz/tsshd/tsshd"
 	"golang.org/x/term"
 )
