@@ -385,6 +385,19 @@ func (c *SshUdpClient) DialTimeout(network, addr string, timeout time.Duration) 
 
 // DialUDP initiates a logical UDP connection to the addr from the remote host
 func (c *SshUdpClient) DialUDP(network, addr string, timeout time.Duration) (PacketConn, error) {
+	return c.dialUDP(network, addr, timeout, false)
+}
+
+// DialUDPDatagramOnly is DialUDP with real-UDP send semantics: packets that
+// don't fit the transport's datagram budget (or arrive while the transport is
+// reconnecting) are dropped instead of being delivered over the reliable
+// stream fallback. Intended for tunneling protocols that run their own path
+// MTU discovery, e.g. QUIC.
+func (c *SshUdpClient) DialUDPDatagramOnly(network, addr string, timeout time.Duration) (PacketConn, error) {
+	return c.dialUDP(network, addr, timeout, true)
+}
+
+func (c *SshUdpClient) dialUDP(network, addr string, timeout time.Duration, datagramOnly bool) (PacketConn, error) {
 	stream, err := c.newStream("dial-udp")
 	if err != nil {
 		return nil, err
@@ -406,6 +419,7 @@ func (c *SshUdpClient) DialUDP(network, addr string, timeout time.Duration) (Pac
 	}
 
 	conn := newPacketConn(stream, resp.ID, c.protoClient.getUdpForwarder(), c.clientProxy.serverChecker)
+	conn.datagramOnly = datagramOnly
 
 	var ok udpReadyMessage
 	if err := sendMessage(stream, &ok); err != nil {
@@ -503,6 +517,20 @@ func (c *SshUdpClient) IsClosed() bool {
 // GetLastActiveTime returns the last confirmed two-way activity time in milliseconds
 func (c *SshUdpClient) GetLastActiveTime() int64 {
 	return c.activeChecker.getAliveTime()
+}
+
+// OnHealthEvent registers callbacks fired when the heartbeat checker
+// transitions into the timeout state (no alive ack within the heartbeat
+// timeout) or recovers from it. Callbacks run on dedicated goroutines and
+// may block briefly. Registration is append-only; register each listener
+// at most once per client.
+func (c *SshUdpClient) OnHealthEvent(onTimeout, onReconnected func()) {
+	if onTimeout != nil {
+		c.activeChecker.onTimeout(onTimeout)
+	}
+	if onReconnected != nil {
+		c.activeChecker.onReconnected(onReconnected)
+	}
 }
 
 // GetLastReconnectError returns the last error encountered during reconnection attempts

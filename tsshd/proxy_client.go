@@ -154,6 +154,16 @@ type clientProxy struct {
 	closed        atomic.Bool
 	udpTraffic    *trafficStats
 	proxyCmds     []string
+	cumTraffic    cumulativeTraffic
+}
+
+// cumulativeTraffic counts UDP wire datagrams for the lifetime of the
+// connection (always on, unlike the windowed debug-only trafficStats).
+type cumulativeTraffic struct {
+	sentPackets atomic.Uint64
+	sentBytes   atomic.Uint64
+	recvPackets atomic.Uint64
+	recvBytes   atomic.Uint64
 }
 
 func (p *clientProxy) clearBackendConn(oldConn *serverConnHolder) {
@@ -447,6 +457,9 @@ func (p *clientProxy) ReadFrom(buf []byte) (int, net.Addr, error) {
 
 			p.serverChecker.updateNow()
 
+			p.cumTraffic.recvPackets.Add(1)
+			p.cumTraffic.recvBytes.Add(uint64(n))
+
 			if p.client.enableDebugging && p.udpTraffic.recFlag.Load() {
 				p.udpTraffic.recvCount.Add(1)
 				p.udpTraffic.recvBytes.Add(uint64(n))
@@ -473,9 +486,13 @@ func (p *clientProxy) WriteTo(buf []byte, _ net.Addr) (int, error) {
 		if err := conn.Write(buf); err != nil {
 			p.client.debug("backend write failed: %v", err)
 			p.clearBackendConn(conn)
-		} else if p.client.enableDebugging && p.udpTraffic.recFlag.Load() {
-			p.udpTraffic.sendCount.Add(1)
-			p.udpTraffic.sendBytes.Add(uint64(len(buf)))
+		} else {
+			p.cumTraffic.sentPackets.Add(1)
+			p.cumTraffic.sentBytes.Add(uint64(len(buf)))
+			if p.client.enableDebugging && p.udpTraffic.recFlag.Load() {
+				p.udpTraffic.sendCount.Add(1)
+				p.udpTraffic.sendBytes.Add(uint64(len(buf)))
+			}
 		}
 	}
 
