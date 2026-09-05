@@ -169,9 +169,9 @@ func newTestSessionContext(keepPending, timeout bool, maxLines int) (*sessionCon
 func runForwardOutputAndReconnect(s *sessionContext, reader *chunkReader, stream *mockStream, callback func()) {
 	var wg sync.WaitGroup
 
-	wg.Go(func() {
-		s.newOutputForwarder("stdout", reader, stream).forward()
-	})
+	forwarder := s.newOutputForwarder("stdout", reader, stream)
+	s.clientChecker.checker.onReconnected(forwarder.onReconnected)
+	wg.Go(forwarder.forward)
 
 	go func() {
 		if callback != nil {

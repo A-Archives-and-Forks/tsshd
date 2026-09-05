@@ -454,8 +454,6 @@ func (f *serverOutputForwarder) forward() {
 
 	go f.writerLoop()
 
-	f.sess.clientChecker.onReconnected(f.onReconnected)
-
 	buffer := make([]byte, 32*1024)
 	for {
 		n, err := f.reader.Read(buffer)

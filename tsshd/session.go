@@ -307,6 +307,15 @@ func (c *sessionContext) newOutputForwarder(name string, reader io.Reader, strea
 	}
 }
 
+func (c *sessionContext) onReconnected() {
+	if c.outForwarder != nil {
+		go c.outForwarder.onReconnected()
+	}
+	if c.errForwarder != nil {
+		go c.errForwarder.onReconnected()
+	}
+}
+
 func (c *sessionContext) forwardIO(server *sshUdpServer, ioStream, errStream Stream) {
 	if server.args.Attachable {
 		c.ioStream = newReplaceableStream(ioStream)
@@ -418,6 +427,13 @@ func (c *sessionContext) Close() {
 			_ = c.cmd.Process.Kill()
 			debug("session [%d] cmd killed", c.id)
 		}
+	}
+
+	if c.ioStream != nil {
+		_ = c.ioStream.Close()
+	}
+	if c.errStream != nil {
+		_ = c.errStream.Close()
 	}
 }
 
